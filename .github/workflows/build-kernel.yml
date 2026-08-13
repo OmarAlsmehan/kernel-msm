@@ -18,7 +18,7 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc libncurses5-dev libssl-dev bison flex libelf-dev zip unzip git wget
+          sudo apt-get install -y build-essential bc libncurses5-dev libssl-dev bison flex libelf-dev zip unzip git wget device-tree-compiler
 
       - name: Setup Toolchain
         run: |
@@ -29,9 +29,18 @@ jobs:
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz
           mkdir clang && tar -xf clang-r383902.tar.gz -C clang
           
-          # GCC 64-bit & 32-bit (Linaro/AOSP)
+          # GCC Target Dependencies (LineageOS Mirrors)
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
+
+      - name: Fix Camera Header & Config
+        run: |
+          # Adiciona o caminho do header msm_camera_tz_util.h ao Makefile do camera_v2
+          CAM_MAKEFILE="drivers/media/platform/msm/camera_v2/Makefile"
+          if [ -f "$CAM_MAKEFILE" ]; then
+            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2" >> "$CAM_MAKEFILE"
+            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2/common" >> "$CAM_MAKEFILE"
+          fi
 
       - name: Compile Kernel Image
         run: |
@@ -41,7 +50,8 @@ jobs:
           
           export PATH=$CLANG_DIR:$GCC64_DIR:$GCC32_DIR:$PATH
           
-          # Opções de compilação compatíveis com o Makefile da Motorola
+          DTC_SYS=$(which dtc)
+          
           BUILD_OPTIONS=(
             ARCH=arm64
             SUBARCH=arm64
@@ -50,6 +60,7 @@ jobs:
             CROSS_COMPILE=aarch64-linux-android-
             CROSS_COMPILE_ARM32=arm-linux-androideabi-
             REAL_CC=$CLANG_DIR/clang
+            DTC=$DTC_SYS
           )
           
           # 1. Aplicar Defconfigs
@@ -57,11 +68,15 @@ jobs:
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
           
-          # 2. Atualizar configurações
+          # 2. Desativar o driver legado MSMB_CAMERA conflitante (Moto G8 usa CamX)
+          scripts/config --file .config --disable CONFIG_MSMB_CAMERA
+          scripts/config --file .config --disable CONFIG_MSMB_CAMERA_LEGACY
+          
+          # 3. Consolidação da configuração
           make "${BUILD_OPTIONS[@]}" olddefconfig
           
-          # 3. Compilação
-          make "${BUILD_OPTIONS[@]}" -j$(nproc --all)
+          # 4. Compilar a imagem do Kernel
+          make "${BUILD_OPTIONS[@]}" -j$(nproc --all) Image.gz
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
