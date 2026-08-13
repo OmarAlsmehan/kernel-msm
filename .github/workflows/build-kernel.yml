@@ -29,17 +29,26 @@ jobs:
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz
           mkdir clang && tar -xf clang-r383902.tar.gz -C clang
           
-          # GCC Target Dependencies (LineageOS Mirrors)
+          # GCC Target Dependencies
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
 
-      - name: Fix Camera Header
+      - name: Fix Camera Headers & Makefiles
         run: |
-          # Mantém a inclusão de headers do driver de câmera
+          # 1. Substitui <msm_camera_tz_util.h> por "msm_camera_tz_util.h" no código do driver da câmara
+          find drivers/media/platform/msm/camera_v2/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/<msm_camera_tz_util.h>/"msm_camera_tz_util.h"/g' {} +
+
+          # 2. Adiciona os caminhos de inclusão nos Makefiles correspondentes
           CAM_MAKEFILE="drivers/media/platform/msm/camera_v2/Makefile"
           if [ -f "$CAM_MAKEFILE" ]; then
             echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2" >> "$CAM_MAKEFILE"
             echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2/common" >> "$CAM_MAKEFILE"
+          fi
+
+          CAM_COMMON_MAKEFILE="drivers/media/platform/msm/camera_v2/common/Makefile"
+          if [ -f "$CAM_COMMON_MAKEFILE" ]; then
+            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2" >> "$CAM_COMMON_MAKEFILE"
+            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2/common" >> "$CAM_COMMON_MAKEFILE"
           fi
 
       - name: Compile Kernel Image
@@ -63,10 +72,24 @@ jobs:
             DTC=$DTC_SYS
           )
           
-          # 1. Carrega a configuração exata do Moto G8 (rav_defconfig)
-          make "${BUILD_OPTIONS[@]}" rav_defconfig
+          # Carregar defconfig
+          make "${BUILD_OPTIONS[@]}" vendor/trinket-perf_defconfig
+          make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
+          make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
           
-          # 2. Compila a imagem do Kernel
+          # Resolver conflitos de compilação de energia/bateria
+          scripts/config --file .config --disable CONFIG_BATTERY_BQ27XXX
+          scripts/config --file .config --disable CONFIG_QPNP_FG_GEN4
+          scripts/config --file .config --enable CONFIG_QPNP_QG
+          scripts/config --file .config --enable CONFIG_CHARGER_SMB1355
+          
+          # Converter módulos embutidos
+          sed -i 's/=m/=y/g' .config
+          
+          # Atualizar .config
+          make "${BUILD_OPTIONS[@]}" olddefconfig
+          
+          # Compilar imagem
           make "${BUILD_OPTIONS[@]}" -j$(nproc --all) Image.gz
 
       - name: Upload Kernel Artifact
