@@ -20,60 +20,51 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential bc libncurses5-dev libssl-dev bison flex libelf-dev zip unzip git wget
 
-      - name: Setup AOSP Toolchain
+      - name: Setup Toolchain
         run: |
           mkdir -p $GITHUB_WORKSPACE/toolchain
           cd $GITHUB_WORKSPACE/toolchain
           
-          # AOSP Clang
+          # Clang AOSP r383902
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz
           mkdir clang && tar -xf clang-r383902.tar.gz -C clang
           
-          # GCC Target Dependencies
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
-          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
+          # GCC 64-bit & 32-bit (Linaro/AOSP)
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
+          git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
 
       - name: Compile Kernel Image
         run: |
-          # Toolchain Paths
           CLANG_DIR=$GITHUB_WORKSPACE/toolchain/clang/bin
           GCC64_DIR=$GITHUB_WORKSPACE/toolchain/gcc64/bin
           GCC32_DIR=$GITHUB_WORKSPACE/toolchain/gcc32/bin
           
           export PATH=$CLANG_DIR:$GCC64_DIR:$GCC32_DIR:$PATH
           
-          # Fix for "aarch64-linux-android-ld: not found"
-          mkdir -p $GITHUB_WORKSPACE/bin-override
-          ln -s $CLANG_DIR/ld.lld $GITHUB_WORKSPACE/bin-override/aarch64-linux-android-ld
-          export PATH=$GITHUB_WORKSPACE/bin-override:$PATH
-          
-          # Build Flags
+          # Opções de compilação compatíveis com o Makefile da Motorola
           BUILD_OPTIONS=(
             ARCH=arm64
             SUBARCH=arm64
             CC=clang
-            LD=ld.lld
-            AR=llvm-ar
-            NM=llvm-nm
-            OBJCOPY=llvm-objcopy
-            OBJDUMP=llvm-objdump
-            STRIP=llvm-strip
             CLANG_TRIPLE=aarch64-linux-gnu-
             CROSS_COMPILE=aarch64-linux-android-
             CROSS_COMPILE_ARM32=arm-linux-androideabi-
+            REAL_CC=$CLANG_DIR/clang
           )
           
-          # Apply Defconfigs
+          # 1. Aplicar Defconfigs
           make "${BUILD_OPTIONS[@]}" vendor/trinket-perf_defconfig
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
           
-          # Consolidate and Build
+          # 2. Atualizar configurações
           make "${BUILD_OPTIONS[@]}" olddefconfig
+          
+          # 3. Compilação
           make "${BUILD_OPTIONS[@]}" -j$(nproc --all)
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image.gz-MotoG8-Build71
+          name: Image.gz-MotoG8
           path: arch/arm64/boot/Image.gz
