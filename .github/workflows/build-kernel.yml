@@ -47,18 +47,11 @@ jobs:
           
           BUILD_OPTIONS=(
             ARCH=arm64
-            SUBARCH=arm64
-            CC=clang
-            
+            REAL_CC=clang
             CLANG_TRIPLE=aarch64-linux-gnu-
             CROSS_COMPILE=aarch64-linux-android-
             CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          )
-          
-          # تنظيف بيئة البناء
-          make "${BUILD_OPTIONS[@]}" clean
-          make "${BUILD_OPTIONS[@]}" mrproper
-          
+             ) 
           # تجهيز defconfig
           make "${BUILD_OPTIONS[@]}" rav_defconfig
           
