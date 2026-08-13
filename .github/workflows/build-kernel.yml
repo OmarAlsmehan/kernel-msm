@@ -33,13 +33,24 @@ jobs:
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
 
-      - name: Fix Camera Header & Config
+      - name: Fix Camera Header & Driver Symbol Conflicts
         run: |
-          # Adiciona o caminho do header msm_camera_tz_util.h ao Makefile do camera_v2
+          # 1. Adiciona o caminho do header msm_camera_tz_util.h ao Makefile do camera_v2
           CAM_MAKEFILE="drivers/media/platform/msm/camera_v2/Makefile"
           if [ -f "$CAM_MAKEFILE" ]; then
             echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2" >> "$CAM_MAKEFILE"
             echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2/common" >> "$CAM_MAKEFILE"
+          fi
+
+          # 2. Corrige o conflito de simbolo duplicado 'is_input_present' entre qg-util e fg-util
+          if [ -f "drivers/power/supply/qcom/qg-util.c" ]; then
+            sed -i 's/\bis_input_present\b/qg_is_input_present/g' drivers/power/supply/qcom/qg-util.c
+          fi
+          if [ -f "drivers/power/supply/qcom/qg-util.h" ]; then
+            sed -i 's/\bis_input_present\b/qg_is_input_present/g' drivers/power/supply/qcom/qg-util.h
+          fi
+          if [ -f "drivers/power/supply/qcom/qg-core.h" ]; then
+            sed -i 's/\bis_input_present\b/qg_is_input_present/g' drivers/power/supply/qcom/qg-core.h
           fi
 
       - name: Compile Kernel Image
@@ -79,7 +90,7 @@ jobs:
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_NOVATEK
           scripts/config --file .config --enable CONFIG_INPUT_TOUCHSCREEN
           
-          # 4. Ativar Bateria e PMIC corretos sem o driver conflitante BQ
+          # 4. Ativar subsistema de bateria da Qualcomm
           scripts/config --file .config --disable CONFIG_BATTERY_BQ27XXX
           scripts/config --file .config --enable CONFIG_CHARGER_SMB1355
           scripts/config --file .config --enable CONFIG_QPNP_FG_GEN4
