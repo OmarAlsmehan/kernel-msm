@@ -68,23 +68,30 @@ jobs:
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
           
-          # 2. Desativar o driver legado MSMB_CAMERA conflitante (Moto G8 usa CamX)
+          # 2. Desativar drivers em conflito (Câmera MSMB legada e Bateria incorreta)
           scripts/config --file .config --disable CONFIG_MSMB_CAMERA
           scripts/config --file .config --disable CONFIG_MSMB_CAMERA_LEGACY
-          
-          # 3. Activar os drivers de Touchscreen
-          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_GOODIX
-          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_FOCALTECH
-          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_SYNAPTICS_DSX
-          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_NOVATEK
-          scripts/config --file .config --enable CONFIG_INPUT_TOUCHSCREEN
-          
-          # 4. Ajustar medidor de bateria correto (Usar QG da Qualcomm e remover FG_GEN4/BQ para zerar conflitos)
           scripts/config --file .config --disable CONFIG_BATTERY_BQ27XXX
           scripts/config --file .config --disable CONFIG_QPNP_FG_GEN4
           scripts/config --file .config --enable CONFIG_QPNP_QG
           scripts/config --file .config --enable CONFIG_CHARGER_SMB1355
-          scripts/config --file .config --enable CONFIG_POWER_SUPPLY
+          
+          # 3. Forçar drivers de Touchscreen como BUILT-IN (=y)
+          scripts/config --file .config --enable CONFIG_INPUT_TOUCHSCREEN
+          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_GOODIX
+          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_FOCALTECH
+          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_SYNAPTICS_DSX
+          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_NOVATEK
+          scripts/config --file .config --enable CONFIG_TOUCHSCREEN_NT36523
+          
+          # 4. Forçar subsistema de Sensores Qualcomm (SSC / ADSP / SLPI) como BUILT-IN (=y)
+          scripts/config --file .config --enable CONFIG_SENSORS
+          scripts/config --file .config --enable CONFIG_SENSORS_SSC
+          scripts/config --file .config --enable CONFIG_MSM_SLPI
+          scripts/config --file .config --enable CONFIG_INPUT_SENSOR2
+          scripts/config --file .config --enable CONFIG_SENSORS_ADSP
+          scripts/config --file .config --enable CONFIG_INPUT_MISC
+          scripts/config --file .config --enable CONFIG_INPUT_EVDEV
           
           # 5. Consolidação da configuração
           make "${BUILD_OPTIONS[@]}" olddefconfig
