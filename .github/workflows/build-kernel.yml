@@ -8,31 +8,69 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Checkout Código do Kernel
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup Toolchain & Dependências
+      - name: Instalar Dependências do Sistema
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc libncurses5-dev libssl-dev bison flex libelf-dev clang lld
+          sudo apt-get install -y build-essential bc libncurses5-dev libssl-dev bison flex libelf-dev zip unzip git wget
+
+      - name: Baixar Toolchain AOSP Clang & GCC
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/toolchain
+          cd $GITHUB_WORKSPACE/toolchain
+          
+          # Clang AOSP
+          wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz
+          mkdir clang && tar -xf clang-r383902.tar.gz -C clang
+          
+          # GCC 64-bit Target
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
+          
+          # GCC 32-bit Target
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
 
       - name: Compilar Kernel com Fixes do Moto G8
         run: |
-          # Define variáveis de compilação
-          export ARCH=arm64
-          export SUBARCH=arm64
+          # Define caminhos das toolchains
+          CLANG_DIR=$GITHUB_WORKSPACE/toolchain/clang/bin
+          GCC64_DIR=$GITHUB_WORKSPACE/toolchain/gcc64/bin
+          GCC32_DIR=$GITHUB_WORKSPACE/toolchain/gcc32/bin
           
-          # 1. Aplica a defconfig base
-          make vendor/trinket-perf_defconfig
+          export PATH=$CLANG_DIR:$GCC64_DIR:$GCC32_DIR:$PATH
           
-          # 2. Injeta os fixes de Touch e Bateria/PMIC que editamos
-          make vendor/ext_config/moto-trinket.config
-          make vendor/ext_config/moto-trinket-rav.config
+          # Opções globais de compilação
+          BUILD_OPTIONS=(
+            ARCH=arm64
+            SUBARCH=arm64
+            CC=clang
+            CLANG_TRIPLE=aarch64-linux-gnu-
+            CROSS_COMPILE=aarch64-linux-android-
+            CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          )
           
-          # 3. Consolida e Compila
-          make olddefconfig
-          make -j$(nproc --all)
+          # 1. Aplica a defconfig base Trinket
+          make "${BUILD_OPTIONS[@]}" vendor/trinket-perf_defconfig
+          
+          # 2. Injeta os fixes de Touch (moto-trinket.config)
+          make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
+          
+          # 3. Injeta os fixes de Bateria/PMIC (moto-trinket-rav.config)
+          make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
+          
+          # 4. Consolida e limpa prompts pendentes
+          make "${BUILD_OPTIONS[@]}" olddefconfig
+          
+          # 5. Compila a imagem do Kernel
+          make "${BUILD_OPTIONS[@]}" -j$(nproc --all)
+
+      - name: Upload Image.gz Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image.gz-MotoG8-Build68
+          path: arch/arm64/boot/Image.gz
