@@ -35,20 +35,31 @@ jobs:
 
       - name: Fix Camera Headers & Includes
         run: |
-          # Corrige include de msm_camera_tz_util.h no código da câmera
+          # 1. Corrige include de msm_camera_tz_util.h
           find drivers/media/platform/msm/camera_v2/ -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/<msm_camera_tz_util.h>/"msm_camera_tz_util.h"/g' {} +
 
-          CAM_MAKEFILE="drivers/media/platform/msm/camera_v2/Makefile"
-          if [ -f "$CAM_MAKEFILE" ]; then
-            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2" >> "$CAM_MAKEFILE"
-            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2/common" >> "$CAM_MAKEFILE"
-          fi
+          # 2. Injeta todos os caminhos de cabeçalho da câmera MSM nos Makefiles
+          CAM_MAKEFILES=(
+            "drivers/media/platform/msm/camera_v2/Makefile"
+            "drivers/media/platform/msm/camera_v2/common/Makefile"
+            "drivers/media/platform/msm/camera_v2/isp/Makefile"
+          )
 
-          CAM_COMMON_MAKEFILE="drivers/media/platform/msm/camera_v2/common/Makefile"
-          if [ -f "$CAM_COMMON_MAKEFILE" ]; then
-            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2" >> "$CAM_COMMON_MAKEFILE"
-            echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2/common" >> "$CAM_COMMON_MAKEFILE"
-          fi
+          INCLUDES=(
+            "-Idrivers/media/platform/msm/camera_v2"
+            "-Idrivers/media/platform/msm/camera_v2/common"
+            "-Idrivers/media/platform/msm/camera_v2/isp"
+            "-Idrivers/media/platform/msm/camera_v2/sensor"
+            "-Idrivers/media/platform/msm/camera_v2/pproc"
+          )
+
+          for mk in "${CAM_MAKEFILES[@]}"; do
+            if [ -f "$mk" ]; then
+              for inc in "${INCLUDES[@]}"; do
+                echo "ccflags-y += $inc" >> "$mk"
+              done
+            fi
+          done
 
       - name: Compile Kernel Image
         run: |
@@ -70,18 +81,18 @@ jobs:
             DTC=$DTC_SYS
           )
           
-          # 1. Carregar defconfig base da Motorola para o Moto G8 (rav / trinket)
+          # Carregar defconfig do Moto G8 (rav / trinket)
           make "${BUILD_OPTIONS[@]}" vendor/trinket-perf_defconfig
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
           
-          # 2. Desativar conflitos de gerenciamento de bateria incorretos
+          # Ajustes de energia/bateria
           scripts/config --file .config --disable CONFIG_BATTERY_BQ27XXX
           scripts/config --file .config --disable CONFIG_QPNP_FG_GEN4
           scripts/config --file .config --enable CONFIG_QPNP_QG
           scripts/config --file .config --enable CONFIG_CHARGER_SMB1355
           
-          # 3. Forçar apenas TOUCHSCREEN como Built-in (=y)
+          # Forçar drivers de Touchscreen como Built-in (=y)
           scripts/config --file .config --enable CONFIG_INPUT_TOUCHSCREEN
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_GOODIX
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_FOCALTECH
@@ -89,7 +100,7 @@ jobs:
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_NOVATEK
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_NT36523
           
-          # 4. Forçar apenas SENSORES (Qualcomm SSC / SLPI) como Built-in (=y)
+          # Forçar Sensores (Qualcomm SSC / SLPI) como Built-in (=y)
           scripts/config --file .config --enable CONFIG_SENSORS
           scripts/config --file .config --enable CONFIG_SENSORS_SSC
           scripts/config --file .config --enable CONFIG_MSM_SLPI
@@ -98,10 +109,10 @@ jobs:
           scripts/config --file .config --enable CONFIG_INPUT_MISC
           scripts/config --file .config --enable CONFIG_INPUT_EVDEV
           
-          # 5. Atualizar e resolver dependências do .config
+          # Resolver dependências do .config
           make "${BUILD_OPTIONS[@]}" olddefconfig
           
-          # 6. Compilar a imagem do Kernel
+          # Compilar imagem
           make "${BUILD_OPTIONS[@]}" -j$(nproc --all) Image.gz
 
       - name: Upload Kernel Artifact
