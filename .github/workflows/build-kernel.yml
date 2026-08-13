@@ -33,24 +33,13 @@ jobs:
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
 
-      - name: Fix Camera Header & Driver Symbol Conflicts
+      - name: Fix Camera Header & Config
         run: |
-          # 1. Adiciona o caminho do header msm_camera_tz_util.h ao Makefile do camera_v2
+          # Adiciona o caminho do header msm_camera_tz_util.h ao Makefile do camera_v2
           CAM_MAKEFILE="drivers/media/platform/msm/camera_v2/Makefile"
           if [ -f "$CAM_MAKEFILE" ]; then
             echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2" >> "$CAM_MAKEFILE"
             echo "ccflags-y += -Idrivers/media/platform/msm/camera_v2/common" >> "$CAM_MAKEFILE"
-          fi
-
-          # 2. Corrige o conflito de simbolo duplicado 'is_input_present' entre qg-util e fg-util
-          if [ -f "drivers/power/supply/qcom/qg-util.c" ]; then
-            sed -i 's/\bis_input_present\b/qg_is_input_present/g' drivers/power/supply/qcom/qg-util.c
-          fi
-          if [ -f "drivers/power/supply/qcom/qg-util.h" ]; then
-            sed -i 's/\bis_input_present\b/qg_is_input_present/g' drivers/power/supply/qcom/qg-util.h
-          fi
-          if [ -f "drivers/power/supply/qcom/qg-core.h" ]; then
-            sed -i 's/\bis_input_present\b/qg_is_input_present/g' drivers/power/supply/qcom/qg-core.h
           fi
 
       - name: Compile Kernel Image
@@ -74,7 +63,7 @@ jobs:
             DTC=$DTC_SYS
           )
           
-          # 1. Aplicar Defconfigs
+          # 1. Aplicar Defconfigs do Moto G8 (Trinket / RAV)
           make "${BUILD_OPTIONS[@]}" vendor/trinket-perf_defconfig
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
@@ -83,17 +72,18 @@ jobs:
           scripts/config --file .config --disable CONFIG_MSMB_CAMERA
           scripts/config --file .config --disable CONFIG_MSMB_CAMERA_LEGACY
           
-          # 3. Forçar a ativação dos drivers de Touchscreen suportados pelo Trinket
+          # 3. Activar os drivers de Touchscreen
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_GOODIX
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_FOCALTECH
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_SYNAPTICS_DSX
           scripts/config --file .config --enable CONFIG_TOUCHSCREEN_NOVATEK
           scripts/config --file .config --enable CONFIG_INPUT_TOUCHSCREEN
           
-          # 4. Ativar subsistema de bateria da Qualcomm
+          # 4. Ajustar medidor de bateria correto (Usar QG da Qualcomm e remover FG_GEN4/BQ para zerar conflitos)
           scripts/config --file .config --disable CONFIG_BATTERY_BQ27XXX
+          scripts/config --file .config --disable CONFIG_QPNP_FG_GEN4
+          scripts/config --file .config --enable CONFIG_QPNP_QG
           scripts/config --file .config --enable CONFIG_CHARGER_SMB1355
-          scripts/config --file .config --enable CONFIG_QPNP_FG_GEN4
           scripts/config --file .config --enable CONFIG_POWER_SUPPLY
           
           # 5. Consolidação da configuração
