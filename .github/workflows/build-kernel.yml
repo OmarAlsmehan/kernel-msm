@@ -1,4 +1,4 @@
-name: Build Kernel Moto G8 (RAV)
+name: Build Moto G8 Kernel
 
 on:
   workflow_dispatch:
@@ -8,69 +8,72 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest 
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Código do Kernel
+      - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Instalar Dependências do Sistema
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bc libncurses5-dev libssl-dev bison flex libelf-dev zip unzip git wget
 
-      - name: Baixar Toolchain AOSP Clang & GCC
+      - name: Setup AOSP Toolchain
         run: |
           mkdir -p $GITHUB_WORKSPACE/toolchain
           cd $GITHUB_WORKSPACE/toolchain
           
-          # Clang AOSP
+          # AOSP Clang
           wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android11-release/clang-r383902.tar.gz
           mkdir clang && tar -xf clang-r383902.tar.gz -C clang
           
-          # GCC 64-bit Target
+          # GCC Target Dependencies
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 gcc64
-          
-          # GCC 32-bit Target
           git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 gcc32
 
-      - name: Compilar Kernel com Fixes do Moto G8
+      - name: Compile Kernel Image
         run: |
-          # Define caminhos das toolchains
+          # Toolchain Paths
           CLANG_DIR=$GITHUB_WORKSPACE/toolchain/clang/bin
           GCC64_DIR=$GITHUB_WORKSPACE/toolchain/gcc64/bin
           GCC32_DIR=$GITHUB_WORKSPACE/toolchain/gcc32/bin
           
           export PATH=$CLANG_DIR:$GCC64_DIR:$GCC32_DIR:$PATH
           
-          # Opções globais de compilação
+          # Fix for "aarch64-linux-android-ld: not found"
+          mkdir -p $GITHUB_WORKSPACE/bin-override
+          ln -s $CLANG_DIR/ld.lld $GITHUB_WORKSPACE/bin-override/aarch64-linux-android-ld
+          export PATH=$GITHUB_WORKSPACE/bin-override:$PATH
+          
+          # Build Flags
           BUILD_OPTIONS=(
             ARCH=arm64
             SUBARCH=arm64
             CC=clang
+            LD=ld.lld
+            AR=llvm-ar
+            NM=llvm-nm
+            OBJCOPY=llvm-objcopy
+            OBJDUMP=llvm-objdump
+            STRIP=llvm-strip
             CLANG_TRIPLE=aarch64-linux-gnu-
             CROSS_COMPILE=aarch64-linux-android-
             CROSS_COMPILE_ARM32=arm-linux-androideabi-
           )
           
-          # 1. Aplica a defconfig base Trinket
+          # Apply Defconfigs
           make "${BUILD_OPTIONS[@]}" vendor/trinket-perf_defconfig
-          
-          # 2. Injeta os fixes de Touch (moto-trinket.config)
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket.config
-          
-          # 3. Injeta os fixes de Bateria/PMIC (moto-trinket-rav.config)
           make "${BUILD_OPTIONS[@]}" vendor/ext_config/moto-trinket-rav.config
           
-          # 4. Consolida e limpa prompts pendentes
+          # Consolidate and Build
           make "${BUILD_OPTIONS[@]}" olddefconfig
-          
-          # 5. Compila a imagem do Kernel
           make "${BUILD_OPTIONS[@]}" -j$(nproc --all)
 
-      - name: Upload Image.gz Artifact
+      - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image.gz-MotoG8-Build68
+          name: Image.gz-MotoG8-Build71
           path: arch/arm64/boot/Image.gz
