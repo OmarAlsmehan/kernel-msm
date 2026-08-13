@@ -47,17 +47,27 @@ jobs:
           
           BUILD_OPTIONS=(
             ARCH=arm64
-            REAL_CC=clang
+            SUBARCH=arm64
+            CC=clang
+            HOSTCC=clang
+            HOSTCXX=clang++
+            REAL_CC=$CLANG_DIR/clang
             CLANG_TRIPLE=aarch64-linux-gnu-
             CROSS_COMPILE=aarch64-linux-android-
             CROSS_COMPILE_ARM32=arm-linux-androideabi-
-             ) 
+          )
+          
+          # تنظيف بيئة البناء
+          make "${BUILD_OPTIONS[@]}" clean
+          make "${BUILD_OPTIONS[@]}" mrproper
+          
           # تجهيز defconfig
           make "${BUILD_OPTIONS[@]}" rav_defconfig
           
           # بناء النواة والموديولات
           make "${BUILD_OPTIONS[@]}" -j$(nproc)
           make "${BUILD_OPTIONS[@]}" -j$(nproc) modules
+
 
       - name: Package with AnyKernel3
         run: |
