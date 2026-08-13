@@ -1,0 +1,38 @@
+name: Build Kernel Moto G8 (RAV)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - stock-g8-patch35
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Código do Kernel
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Toolchain & Dependências
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc libncurses5-dev libssl-dev bison flex libelf-dev clang lld
+
+      - name: Compilar Kernel com Fixes do Moto G8
+        run: |
+          # Define variáveis de compilação
+          export ARCH=arm64
+          export SUBARCH=arm64
+          
+          # 1. Aplica a defconfig base
+          make vendor/trinket-perf_defconfig
+          
+          # 2. Injeta os fixes de Touch e Bateria/PMIC que editamos
+          make vendor/ext_config/moto-trinket.config
+          make vendor/ext_config/moto-trinket-rav.config
+          
+          # 3. Consolida e Compila
+          make olddefconfig
+          make -j$(nproc --all)
