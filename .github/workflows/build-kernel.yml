@@ -8,12 +8,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 1
 
       - name: Install System Dependencies
         run: |
@@ -33,14 +34,13 @@ jobs:
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
 
-      - name: Compile Kernel Image
+      - name: Compile Kernel Image and Modules
         run: |
           CLANG_DIR=$GITHUB_WORKSPACE/toolchain/clang/bin
           GCC64_DIR=$GITHUB_WORKSPACE/toolchain/gcc64/bin
           GCC32_DIR=$GITHUB_WORKSPACE/toolchain/gcc32/bin
           
           export PATH=$CLANG_DIR:$GCC64_DIR:$GCC32_DIR:$PATH
-          DTC_SYS=$(which dtc)
           
           BUILD_OPTIONS=(
             ARCH=arm64
@@ -49,18 +49,36 @@ jobs:
             CLANG_TRIPLE=aarch64-linux-gnu-
             CROSS_COMPILE=aarch64-linux-android-
             CROSS_COMPILE_ARM32=arm-linux-androideabi-
-            REAL_CC=$CLANG_DIR/clang
-            DTC=$DTC_SYS
           )
           
-          # Carregar defconfig do Moto G8 (rav)
+          # تنظيف بيئة البناء
+          make "${BUILD_OPTIONS[@]}" clean
+          make "${BUILD_OPTIONS[@]}" mrproper
+          
+          # تجهيز defconfig
           make "${BUILD_OPTIONS[@]}" rav_defconfig
           
-          # Compilar imagem
-          make "${BUILD_OPTIONS[@]}" 
+          # بناء النواة والموديولات
+          make "${BUILD_OPTIONS[@]}" -j$(nproc)
+          make "${BUILD_OPTIONS[@]}" -j$(nproc) modules
+
+      - name: Package with AnyKernel3
+        run: |
+          # تحميل AnyKernel3
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AK3
+          
+          # نسخ ملف النواة
+          cp arch/arm64/boot/Image.gz AK3/
+          
+          # البحث عن الموديولات ونسخها لمجلد modules في AK3 (إن وجدت)
+          find . -name "*.ko" -exec cp {} AK3/modules/vendor/lib/modules/ \; || true
+          
+          # ضغط الملفات لتصبح جاهزة للتفليش
+          cd AK3
+          zip -r9 ../AnyKernel3-MotoG8.zip * -x .git README.md *placeholder
 
       - name: Upload Kernel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Image.gz-MotoG8
-          path: arch/arm64/boot/Image.gz
+          name: AnyKernel3-MotoG8
+          path: AnyKernel3-MotoG8.zip
